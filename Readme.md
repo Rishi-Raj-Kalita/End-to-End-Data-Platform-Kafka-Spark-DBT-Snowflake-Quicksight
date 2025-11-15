@@ -550,7 +550,7 @@ erDiagram
 
 ---
 
-## 🔗 Advanced Relationship Patterns
+##  Advanced Relationship Patterns
 
 ### **1. Bridge Table Implementation**
 ```
@@ -591,4 +591,59 @@ Dimension Versioning:
 ---
 
 
+## Data Pipeline Flow
+
+```mermaid
+graph TD
+    %% User Upload
+    A[CSV Upload S3] --> B[Airflow DAG Trigger]
+    
+    %% Bronze Layer
+    B --> C["Job 1: Bronze Ingestion<br/>Input: Transaction CSVs + Settlement CSVs + Aurora CDC<br/>Transform: Raw Copy + Metadata + Deduplication<br/>Output: RAW_TRANSACTIONS, RAW_SETTLEMENTS, RAW_DIMENSIONS"]
+    C --> D[(RAW_TRANSACTIONS<br/>RAW_SETTLEMENTS<br/>RAW_DIM_CUSTOMERS<br/>RAW_DIM_ACCOUNTS<br/>RAW_DIM_VENDORS<br/>RAW_DIM_CATEGORIES<br/>RAW_DIM_SETTLEMENT_METHODS)]
+    
+    %% Silver Layer - Validation
+    D --> E["Job 2: Silver Validation<br/>Input: RAW_TRANSACTIONS, RAW_DIMENSIONS<br/>Transform: Data Quality + Type Casting + Deduplication<br/>Output: silver.transactions_cleaned, silver.dimensions_cleaned"]
+    E --> F[(silver.transactions_cleaned<br/>silver.dimensions_cleaned)]
+    
+    %% Silver Layer - Normalization  
+    F --> G["Job 3: Silver Normalization<br/>Input: silver.transactions_cleaned, silver.dimensions_cleaned<br/>Transform: JSON Parsing + Allocation Logic + SCD Type 2<br/>Output: silver.allocations_normalized, silver.dimensions_scd"]
+    G --> H[(silver.allocations_normalized<br/>silver.dimensions_scd)]
+    
+    %% Aurora CDC Stream
+    I[(Aurora CDC Stream<br/>DMS/Kinesis<br/>→ S3 Raw Bucket)] --> C
+    
+    %% Snowflake Import
+    H --> J["Job 4: Snowflake Import<br/>Input: silver.transactions_cleaned, silver.allocations_normalized, silver.dimensions_scd<br/>Transform: S3 to Snowflake Import<br/>Output: Snowflake SILVER tables"]
+    J --> K[(Snowflake SILVER<br/>SILVER_TRANSACTIONS<br/>SILVER_ALLOCATIONS<br/>SILVER_DIM_CUSTOMERS<br/>SILVER_DIM_ACCOUNTS<br/>SILVER_DIM_VENDORS<br/>SILVER_DIM_CATEGORIES<br/>SILVER_DIM_SETTLEMENT_METHODS)]
+    
+    %% dbt Gold Transformation
+    K --> L["Job 5: dbt Gold Transformation<br/>Input: Snowflake SILVER + DIMENSIONS<br/>Transform: Silver to Gold + Dimension Joins + SCD Type 2<br/>Output: Snowflake GOLD Fact Tables"]
+    L --> M[(Snowflake GOLD<br/>FACT_TRANSACTIONS<br/>FACT_EXPENSE_ALLOCATIONS<br/>FACT_SETTLEMENTS<br/>FACT_LEDGER)]
+    
+    %% Monitoring
+    D --> P["Job 6: Data Quality Monitoring<br/>Input: All Bronze, Silver, Gold tables<br/>Transform: Quality Metrics + Lineage<br/>Output: monitoring.data_quality_metrics, monitoring.job_lineage"]
+    F --> P
+    H --> P
+    M --> P
+    P --> Q[(monitoring.data_quality_metrics<br/>monitoring.job_lineage)]
+    
+    %% Styling
+    classDef bronzeLayer fill:#CD7F32,stroke:#8B4513,stroke-width:2px,color:#fff
+    classDef silverLayer fill:#C0C0C0,stroke:#808080,stroke-width:2px,color:#000
+    classDef goldLayer fill:#FFD700,stroke:#DAA520,stroke-width:2px,color:#000
+    classDef exportLayer fill:#4169E1,stroke:#191970,stroke-width:2px,color:#fff
+    classDef analyticsLayer fill:#32CD32,stroke:#228B22,stroke-width:2px,color:#000
+    classDef monitoringLayer fill:#FF6347,stroke:#DC143C,stroke-width:2px,color:#fff
+    classDef tableStyle fill:#F0F8FF,stroke:#4682B4,stroke-width:1px,color:#000
+    classDef auroraStyle fill:#FF69B4,stroke:#C71585,stroke-width:2px,color:#fff
+    
+    class C bronzeLayer
+    class E,G silverLayer
+    class J exportLayer
+    class L goldLayer
+    class P monitoringLayer
+    class D,F,H,K,M,Q tableStyle
+    class I auroraStyle
+```
 
