@@ -1,10 +1,7 @@
 # Data Modeling: Fact-Dimension Relationships & Query Optimization
 
-## 📊 Dimensional Model Design
+##  Dimensional Model Design
 
-# Medallion Architecture - Data Lineage Diagram
-
-## Complete Data Flow Architecture with Table Schemas
 
 ```mermaid
 erDiagram
@@ -511,60 +508,8 @@ erDiagram
     EXT_SILVER_SETTLEMENTS ||--o{ GOLD_FACT_EXPENSE_ALLOCATIONS : "DBT_update_settled_amounts"
 ```
 
-## Architecture Layer Summary
 
-### **Bronze Layer (S3 Raw)**
-- **Purpose**: Immutable audit trail of all source data
-- **Tables**: 7 raw tables (transactions, settlements, 5 dimension tables)
-- **Key Features**: CDC processing, deduplication hashing, metadata enrichment
-
-### **Silver Layer (S3 Processed)**
-- **Purpose**: Cleaned, validated, and normalized data
-- **Tables**: 4 silver tables (transactions, dimensions, allocations, SCD)
-- **Key Features**: Data quality scoring, JSON parsing, SCD Type 2 implementation
-
-### **Snowflake External Tables Layer**
-- **Purpose**: Direct S3 access from Snowflake without data duplication
-- **Tables**: 7 external tables pointing to S3 silver layer
-- **Key Features**: Real-time S3 access, zero data movement, cost optimization
-
-### **Snowflake Gold Layer (dbt Output)**
-- **Purpose**: Final business facts for analytics and reporting
-- **Tables**: 4 fact tables (transactions, allocations, settlements, ledger)
-- **Key Features**: Business logic applied, dimension joins, audit trails
-
-### **Monitoring Layer**
-- **Purpose**: Data quality and pipeline monitoring
-- **Tables**: 2 monitoring tables (quality metrics, job lineage)
-- **Key Features**: Complete data lineage tracking, quality score monitoring
-
-## Key Data Transformations
-
-### **Job 1: Bronze Ingestion**
-- CSV files → RAW_TRANSACTIONS, RAW_SETTLEMENTS
-- Aurora CDC → RAW_DIM_* tables
-- Add metadata, generate hashes, process CDC events
-
-### **Job 2: Silver Validation**
-- RAW_* → SILVER_TRANSACTIONS_CLEANED, SILVER_DIMENSIONS_CLEANED
-- Data type casting, business rule validation, quality scoring
-
-### **Job 3: Silver Normalization**
-- JSON parsing → SILVER_ALLOCATIONS_NORMALIZED
-- SCD Type 2 → SILVER_DIMENSIONS_SCD
-- Historical tracking, allocation calculations
-
-### **Job 4: dbt Gold Transformation**
-- S3 Silver (via External Tables) → Gold fact tables
-- Dimension lookups, business logic, ledger generation
-
-### **Job 5: Data Quality Monitoring**
-- All layers → Monitoring tables
-- Quality metrics, lineage tracking, anomaly detection
-
-This architecture ensures complete data lineage from source systems through to final analytics-ready fact tables, with comprehensive monitoring and quality controls at each stage.
-
-### **Fact Table Grain & Relationships**
+### **Fact Tables Grain & Relationships**
 
 | **Fact Table** | **Grain** | **Relationship Pattern** | **Cardinality Impact** |
 |----------------|-----------|-------------------------|------------------------|
@@ -575,7 +520,7 @@ This architecture ensures complete data lineage from source systems through to f
 
 ---
 
-## 🔗 Advanced Relationship Patterns
+##  Advanced Relationship Patterns
 
 ### **1. Bridge Table Implementation**
 ```
@@ -615,7 +560,7 @@ Dimension Versioning:
 
 ---
 
-## ⚡ Query Optimization Strategies
+##  Query Optimization Strategies
 
 ### **1. Indexing Architecture**
 
@@ -623,7 +568,6 @@ Dimension Versioning:
 |----------------|-------------------|-------------------|
 | **Surrogate Key Indexes** | Narrow integer PKs on all dimensions | Optimal join performance |
 | **Composite Indexes** | (tenant_id, natural_key) | Multi-tenant query pruning |
-| **Covering Indexes** | Include frequently queried dimension attributes | Eliminate key lookups |
 | **Partial Indexes** | WHERE is_current = TRUE on SCD dimensions | Current version queries |
 
 ### **2. Partitioning Strategy**
@@ -646,7 +590,7 @@ Pre-Computed Aggregations:
 
 ---
 
-## 🏗️ Multi-Tenant Relationship Management
+##  Multi-Tenant Relationship Management
 
 ### **Tenant Isolation in Relationships**
 ```
@@ -667,70 +611,3 @@ Relationship Scoping:
 | **DIM_DATE** | Global shared | Cross-tenant time intelligence |
 
 ---
-
-## 📈 Complex Query Patterns
-
-### **1. Hierarchical Category Queries**
-```sql
--- Recursive CTE for category drill-down
-WITH category_hierarchy AS (
-  SELECT category_sk, category_name, 1 as level
-  FROM dim_categories WHERE parent_category_sk IS NULL
-  UNION ALL
-  SELECT c.category_sk, c.category_name, h.level + 1
-  FROM dim_categories c JOIN category_hierarchy h 
-    ON c.parent_category_sk = h.category_sk
-)
--- Query complexity: O(log n) for balanced trees
-```
-
-### **2. Outstanding Balance Calculations**
-```sql
--- Cross-fact table joins with aggregation
-SELECT 
-  payer.customer_name,
-  beneficiary.customer_name,
-  SUM(allocated_amount - COALESCE(settled_amount, 0)) as balance
-FROM fact_expense_allocations ea
-JOIN dim_customers payer ON ea.payer_customer_sk = payer.customer_sk
-JOIN dim_customers beneficiary ON ea.beneficiary_customer_sk = beneficiary.customer_sk
-WHERE ea.settlement_status IN ('Pending', 'Partially_Settled')
--- Performance: Covering index on (settlement_status, allocated_amount, settled_amount)
-```
-
-### **3. Point-in-Time Dimension Queries**
-```sql
--- SCD Type 2 historical accuracy
-SELECT t.*, c.customer_name, c.version_number
-FROM fact_transactions t
-JOIN dim_customers c ON t.payer_customer_sk = c.customer_sk
-WHERE t.transaction_date BETWEEN c.effective_date AND c.end_date
--- Optimization: Composite index on (customer_sk, effective_date, end_date)
-```
-
----
-
-## 🚀 Performance Optimization Results
-
-### **Query Performance Metrics**
-- **Dashboard Queries**: 95% complete in <3 seconds
-- **Balance Calculations**: Real-time updates within 5 minutes  
-- **Historical Analysis**: Point-in-time queries optimized with SCD indexing
-- **Partition Pruning**: 90% data elimination for time-range queries
-
-### **Relationship Optimization**
-- **Join Performance**: Surrogate keys provide 10x faster joins vs natural keys
-- **Cardinality Management**: Bridge table pattern handles 1:50 transaction splits efficiently
-- **Multi-Tenant Isolation**: Row-level security with zero performance impact
-- **Hierarchical Queries**: Recursive CTEs optimized with proper indexing
-
-### **Scalability Achievements**
-```
-Scale Metrics:
-├── Tenants: 1000+ with complete data isolation
-├── Transactions: 100M+ per month across all tenants  
-├── Allocations: 500M+ records with sub-second aggregations
-└── Settlements: Real-time debt network updates
-```
-
-**Key Technical Achievement**: Transformed 1:N JSON cardinality explosion into optimized star schema supporting complex multi-tenant analytical workloads with consistent sub-second query performance.
